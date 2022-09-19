@@ -79,6 +79,7 @@
 #       * 09_19_2022 Created get_results sub to simplify some code.
 #       * 09_19_2022 Added showing all interfaces with --list not just IP based ones.  We sometimes need to monitor L2 ports.
 #       * 09_19_2022 Cleaned up some code where appropriate.
+#       * 09_19_2022 Brought back Bps and bps.  It's more informative.
 #
 # Send us bug reports, questions and comments about this plugin.
 # Latest version of this software: http://exchange.nagios.org
@@ -172,7 +173,7 @@ my $label       = "";
 my $output      = "";
 my $snmp_version = 2;
 my $state       = "UNKNOWN";
-my $suffix      = "B";
+my $suffix      = "Bps";
 my $thirtytwo   = undef;
 my $use_reg     = undef;  # Use Regexp for name
 my $warn_usage  = 85;
@@ -276,7 +277,7 @@ if ( !defined($units) ){
 
 # Switch output from Bytes to bits if changed on command line
 if ($bits) {
-	$suffix = "b"
+	$suffix = "bps"
 }
 
 if ( $iface_speed ) {
