@@ -71,7 +71,7 @@
 # rm = Robert McLoughlin rmcloughlinAToutlook.com
 # Remarks (rm):
 #       This script was written utilizing Net::SNMP which in my view is an antiquated module.  Net-SNMP
-#       is more robust and future proof.  Compiled with --enable-blumenthal-aes allows use more 
+#       is more robust and future proof.  Compiled with --enable-blumenthal-aes allows the use more 
 #       encryption options:  AES-192 and AES-256 (also AES-256c for Cisco devices).
 # minor (rm):
 #
