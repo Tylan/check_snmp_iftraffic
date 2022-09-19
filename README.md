@@ -7,7 +7,7 @@ Perl >= 5.10
 
 Net-SNMP: http://www.net-snmp.org/
 
-Want AES-192 and AES-256 support?  Compile as such:
+Want AES-192 and AES-256 support?  Compile net-snmp as such:
 
 ```
 ./configure --enable-blumenthal-aes [--bindir=/usr/bin]
