@@ -1,6 +1,8 @@
 # check_iftraffic64
 Nagios and Icinga Plugin for Checking Interface Traffic
 
+Forked and modified.  Some things could have broke from version I forked from after I converted and modified to meet my specific wants and needs.
+
 ### Prerequisites
 
 Perl >= 5.10
