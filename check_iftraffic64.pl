@@ -358,7 +358,7 @@ my %snmpv12 = (Community  => $COMMUNITY,);
 
 #snmpv3 arguments
 #base
-my %snmpv3 = (SecName     => $username,);
+my %snmpv3 = ( SecName     => $username, );
 
 if ( $username and $authpass and $privpass ) {
         #authPriv
@@ -368,20 +368,22 @@ if ( $username and $authpass and $privpass ) {
                         PrivPass    => $privpass,
                         PrivProto   => $privproto,
         );
-        %snmpv3 = (%snmpv3, %snmpv3ap);
+        %snmpv3 = ( %snmpv3, %snmpv3ap );
 } elsif ( $username and $authpass ) {
         #authNoPriv
         my %snmpv3anp = (SecLevel    => 'authNoPriv',
                          AuthPass    => $authpass,
                          AuthProto   => $authproto,
         );
-        %snmpv3 = (%snmpv3, %snmpv3anp);
+        %snmpv3 = ( %snmpv3, %snmpv3anp );
 } else {
         #noAuthNoPriv
         my %snmpv3nanp = (SecLevel    => 'noAuthNoPriv',
         );
-        %snmpv3 = (%snmpv3, %snmpv3nanp);
+        %snmpv3 = ( %snmpv3, %snmpv3nanp );
 }
+
+if ( $contextname ) { ( %snmpv3, Context    => $contextname, ); }
 
 my %snmpv3key = (AuthLocalizedKey     => $authkey,
                  PrivLocalizedKey     => $privkey,);
