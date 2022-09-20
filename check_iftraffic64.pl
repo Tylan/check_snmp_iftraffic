@@ -71,7 +71,7 @@
 # rm = Robert McLoughlin rmcloughlinAToutlook.com
 # Remarks (rm):
 #       This script was written utilizing Net::SNMP which in my view is an antiquated module.  Net-SNMP
-#       is more robust and future proof.  Compiled with --enable-blumenthal-aes allows the use more 
+#       is more robust and future proof.  Compiled with --enable-blumenthal-aes allows use more 
 #       encryption options:  AES-192 and AES-256 (also AES-256c for Cisco devices).
 # minor (rm):
 #
@@ -80,6 +80,10 @@
 #       * 09_19_2022 Added showing all interfaces with --list not just IP based ones.  We sometimes need to monitor L2 ports.
 #       * 09_19_2022 Cleaned up some code where appropriate.
 #       * 09_19_2022 Brought back Bps and bps.  It's more informative.
+#       * 09_19_2022 Added ability to remove certain perfdata.  Removes noise from stuff I don't care about.
+#       * 09_19_2022 Changed the perfdata output for in_ave and out_ave to keep in line with interface speed and units provided.  Will 
+#                    display 0.80Mbps instead of 800Kbps for example if units are set to m.
+#       * 09_19_2022 Fixed perfdata to conform to Nagios semicolon standards: https://nagios-plugins.org/doc/guidelines.html
 #
 # Send us bug reports, questions and comments about this plugin.
 # Latest version of this software: http://exchange.nagios.org
@@ -120,21 +124,32 @@ my $inbytes64;
 my $inbytes32;
 my $outbytes64;
 my $outbytes32;
-my $in_ave 	= 0;
-my $pin_ave 	= 0;
-my $in_tot 	= 0;
+my $in_ave 	 = 0;
+my $pin_ave 	 = 0;
+my $in_tot 	 = 0;
 my $index_list;
 my $max_value; #added 20050614 by mw
 my $max_bytes;
 my $opt_h;
-my $out_ave	= 0;
-my $pout_ave	= 0;
-my $port 	= 161;
-my $out_tot 	= 0;
+my $out_ave	 = 0;
+my $pout_ave	 = 0;
+my $port 	 = 161;
+my $out_tot 	 = 0;
 my $response;
 my $session;
 my @snmpoids;
 my $units;
+my $disableperf;
+my $max_speed;
+my $max_speedOut;
+my $pdInSpeed    = 1;
+my $pdOutSpeed   = 1;
+my $pdInUsage    = 1;
+my $pdOutUsage   = 1;
+my $pdInBwdth    = 1;
+my $pdOutBwdth   = 1;
+my $pdInAbs      = 1;
+my $pdOutAbs     = 1;
 
 # SNMP OIDs for Traffic
 my $snmpIfOperStatus 	= '1.3.6.1.2.1.2.2.1.8';	# Operational state of interface (i.e. 1-up, 2-down, etc.)
@@ -195,29 +210,27 @@ my $status = GetOptions(
         "h|help"                       => \$opt_h,
         "a|authproto=s"                => \$authproto,
         "A|authpass=s"                 => \$authpass, # changed 20220919 by rm
-        "B"                            => \$bits,
-        "bits"                         => \$bits,
+        "B|bits"                       => \$bits,
         "C|community=s"                => \$COMMUNITY,
         "w|warning=s"                  => \$warn_usage,
         "c|critical=s"                 => \$crit_usage,
         "b|bandwidth|I|inBandwidth=i"  => \$iface_speed,
         "O|outBandwidth=i"             => \$iface_speedOut,
         "f|force"                      => \$force, #added 20130429 by gjf
-        "r"                            => \$use_reg,           
-        "noregexp"                     => \$use_reg,
+        "r|noregxp"                    => \$use_reg,           
         "n|contextname=s"              => \$contextname, #added 20220919 by rm
         "S|seclevel=s"                 => \$seclevel, #added 20220919 by rm
         "p|port=i"                     => \$port,
         "u|units=s"                    => \$units,
         "i|interface=s"                => \$iface_descr,
         "H|hostname=s"                 => \$host_address,
-        "L"                            => \$index_list,
+        "L|list"                       => \$index_list,
         "d|debug=i"                    => \$debug,
-        "list"                         => \$index_list,
         "user|username=s"              => \$username,
         "v|Version=s"                  => \$snmp_version,
         "M|max=i"                      => \$max_value, #added 20050614 by mw
         "x|privproto=s"                => \$privproto,
+        "q|disableperf=s"              => \$disableperf,
         "X|privpass=s"                 => \$privpass, #changed 20220919 by rm
         "y|authkey=s"                  => \$authkey, #added 20220919 by rm
         "z|privkey=s"                  => \$privkey, #added 20220919 by rm
@@ -233,7 +246,6 @@ eval {
 			exit -1;
 		};
 	alarm 15;
-
 
 # Print help if no options given
 if ( $status == 0 ) {
@@ -268,7 +280,6 @@ if ( !$host_address )  {
 	print "\nMissing version 3 auth password!\n\n";
 	stop(print_usage(),"OK");
 }
-
 # Set default units if undefined
 if ( !defined($units) ){
 	#bits
@@ -279,6 +290,11 @@ if ( !defined($units) ){
 if ($bits) {
 	$suffix = "bps"
 }
+
+
+# Added to preserve iface native values 20220919 by rm
+if ( $iface_speed ) { $max_speed = $iface_speed; }
+if ( $iface_speedOut ) { $max_speedOut = $iface_speedOut; } else { $max_speedOut = $iface_speed; }
 
 if ( $iface_speed ) {
 	#change 20050414 by mw
@@ -302,14 +318,27 @@ if ( !$max_value ) {
 	}
 } else {
 	# Max value specified, used given value, convert to Bytes
-	$max_bytes = unit2bytes( $max_value, $units );
+        $max_bytes = unit2bytes( $max_value, $units );
 }
 
 debugout ("BYTE COUNTER max_value: $max_bytes", "2");
 
+# Added 20220919
+# disable perfdata if requested
+if ($disableperf) {
+        if ($disableperf =~ m/a/) { $pdInSpeed = 0; }
+        if ($disableperf =~ m/b/) { $pdOutSpeed = 0; }
+        if ($disableperf =~ m/c/) { $pdInUsage = 0; }
+        if ($disableperf =~ m/d/) { $pdOutUsage = 0; }
+        if ($disableperf =~ m/e/) { $pdInBwdth = 0; }
+        if ($disableperf =~ m/f/) { $pdOutBwdth = 0; }
+        if ($disableperf =~ m/g/) { $pdInAbs = 0; }
+        if ($disableperf =~ m/h/) { $pdOutAbs = 0; }
+}
+
 ####### Can only be set after interface 'speed in' and 'out' and 'max bytes' have all been converted to Bytes
 # Bytes
-$units = "B";
+#$units = "B";
 
 # Check snmp version, set snmp parameters
 # changed 20220919 by rm
@@ -757,10 +786,10 @@ debugout("\tin_tot: $in_tot\n\tout_tot: $out_tot\n\tin_ave: $in_ave\n\tout_ave: 
 debugout("\tin_ave_pct: $in_ave_pct\n\tout_ave_pct: $out_ave_pct\n\tin_bytes_abs: $in_bytes_abs\n\tout_bytes_abs: $out_bytes_abs", "4");
 
 # Scale ave and tot for output
-$in_tot = unit2scale($in_tot);
-$out_tot = unit2scale($out_tot);
-$in_ave = unit2scale($in_ave);
-$out_ave = unit2scale($out_ave);
+$in_tot = unit2scale($in_tot, $units);
+$out_tot = unit2scale($out_tot, $units);
+$in_ave = unit2scale($in_ave, $units);
+$out_ave = unit2scale($out_ave, $units);
 
 # Convert from Bytes/bits to megaBytes/bits
 $in_bytes  = sprintf( "%.2f", $in_bytes / (1024 * 1000) );
@@ -789,11 +818,19 @@ if ( ( $in_ave_pct < $warn_usage ) and ( $out_ave_pct < $warn_usage ) ) {
 	$output = "$state - OUT bandwidth ($out_ave_pct%) too high";
 }
 
+
 # Changed 20091214 gj - commas should have been semicolons
-$output .=
-"|inUsage=$in_ave_pct%;$warn_usage;$crit_usage outUsage=$out_ave_pct%;$warn_usage;$crit_usage"
-  . " inBandwidth=" . $pin_ave . "B outBandwidth=" . $pout_ave . "B"
-  . " inAbsolut=$in_bytes_abs" . "c" . " outAbsolut=$out_bytes_abs" . "c";
+# Changed 20220919 rm - each perf output needs four semicolons.  Also made 
+# perfdata output custom depending on needs
+$output .= "|"; 
+if ($pdInSpeed) { $output .= "inSpeed=$in_ave;;;0;$max_speed "; } 
+if ($pdOutSpeed) { $output .= "outSpeed=$out_ave;;;0;$max_speedOut "; } 
+if ($pdInUsage) { $output .= "inUsage=$in_ave_pct%;$warn_usage;$crit_usage;; "; }
+if ($pdOutUsage) { $output .= "outUsage=$out_ave_pct%;$warn_usage;$crit_usage;; "; }
+if ($pdInBwdth) { $output .= "inBandwidth=" . $pin_ave . "B;;;; "; }
+if ($pdOutBwdth) { $output .= "outBandwidth=" . $pout_ave . "B;;;; "; }
+if ($pdInAbs) {  $output .= "inAbsolut=$in_bytes_abs" . "c;;;; "; }
+if ($pdOutAbs) { $output .= "outAbsolut=$out_bytes_abs" . "c;;;;"; }
 debugout ("",1);
 stop($output, $state);
 
@@ -930,23 +967,21 @@ sub unit2bytes {
 
 sub unit2scale {
 	# Scale output, expecting Bits\Bytes input
-	my ($val) = @_;
+	my ($val, $units) = @_;
 	my $prefix = "";
 
-	# I'm not sure which should be used here 1024 or 1000 but 1000 is easier on the
-	# eye when looking at the plug-in output
-	#if ( $val > 1024 ) {
-	if ( $val > 1000 ) {
-	#	$val = sprintf( "%.2f", $val / 1024 );
+
+        # changed 20220919
+        if ( $units eq "k" ) {
 		$val = sprintf( "%.2f", $val / 1000 );
 		$prefix = "K";
 	}
-	if ( $val > 1000 ) {
-		$val = sprintf( "%.2f", $val / 1000 );
+        if ( $units eq "m" ) {
+		$val = sprintf( "%.2f", $val / 1000 / 1000 );
 		$prefix = "M";
 	}
-	if ( $val > 1000 ) {
-		$val = sprintf( "%.2f", $val / 1000 );
+        if ( $units eq "g" ) {
+		$val = sprintf( "%.2f", $val / 1000 / 1000 / 1000 );
 		$prefix = "G";
 	}
 	return $val . $prefix;
@@ -1024,7 +1059,7 @@ sub debugout {
 #Couldn't sustain "HERE";-), either.
 sub print_usage {
 	print <<EOU;
-    Usage: check_iftraffic64.pl -H host [ -C community_string ] [ -i if_index|if_descr ] [ -r ] [ -b if_max_speed_in | -I if_max_speed_in ] [ -O if_max_speed_out ] [ -u ] [ -B ] [ --32bit ] [ -f ] [ -L ] [ -M ] [ -w warn ] [ -c crit ] [ -v 1|2|3 ] [ --username <username> ] [ --contextname <contextname> ] [ --authpassword <authpassword> ] [ --authprotocol MD5|SHA ] [ --privpassword <privpassword> ] [ --privprotocol DES|3DES|AES|AES192|AES256|AES256C ] [ --authkey <authkey> ] [ --privkey <privkey> ]
+    Usage: check_iftraffic64.pl -H host [ -C community_string ] [ -i if_index|if_descr ] [ -r ] [ -b if_max_speed_in | -I if_max_speed_in ] [ -O if_max_speed_out ] [ -u ] [ -B ] [ --32bit ] [ -f ] [ -L ] [ -M ] [ -w warn ] [ -c crit ] [ -v 1|2|3 ] [ --username <username> ] [ --contextname <contextname> ] [ --authpassword <authpassword> ] [ --authprotocol MD5|SHA ] [ --privpassword <privpassword> ] [ --privprotocol DES|3DES|AES|AES192|AES256|AES256C ] [ --authkey <authkey> ] [ --privkey <privkey> ] [ -q abcdefgh ]
 
     Example 1: check_iftraffic64.pl -H host1 -C sneaky
     Example 2: check_iftraffic64.pl -H host1 -C sneaky -i "Intel Pro" -r -B  
@@ -1085,6 +1120,9 @@ sub print_usage {
         SNMPv3 authentication password
     -a, --authproto=STRING
         SNMPv3 authentication protocol
+    -q, --disableperf=STRING
+        Disable specific perfdata 
+        (a - InSpeed, b - OutSpeed, c - InUsage, d - OutUsage, e - InBwdth, f - OutBwdth, g - InAbsolute, f - OutAbsolute)
     -y, --authkey=STRING
         SNMPv3 authentication key
     -X, --privpass=STRING
