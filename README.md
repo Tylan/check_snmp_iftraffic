@@ -6,6 +6,7 @@ Forked and modified.  Some things could have broke from version I forked from af
 ### Prerequisites
 
 Net-SNMP == 5.7 for basic functionality.
+
 Net-SNMP >= 5.8 for AES-192 and AES-256 support.
 
 Net-SNMP: http://www.net-snmp.org/
