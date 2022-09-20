@@ -5,9 +5,8 @@ Forked and modified.  Some things could have broke from version I forked from af
 
 ### Prerequisites
 
-Perl >= 5.10 for basic functionality.
-
-Perl >= 5.80 for AES-192 and AES-256 support.
+Net-SNMP == 5.7 for basic functionality.
+Net-SNMP >= 5.8 for AES-192 and AES-256 support.
 
 Net-SNMP: http://www.net-snmp.org/
 
