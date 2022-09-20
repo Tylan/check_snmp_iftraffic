@@ -19,4 +19,4 @@ make
 make install
 ```
 
-Usage of bindir is optional.  Use at your own risk!
+Usage of bindir is optional.  **_Use at your own risk!_**  I've had no issues with installing 5.9.1 into the default location (/usr/bin).  Nagios XI still works fine (for me).
