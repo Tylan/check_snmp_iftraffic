@@ -20,3 +20,8 @@ make install
 ```
 
 Usage of bindir is optional.  **_Use at your own risk!_**  I've had no issues with installing 5.9.1 into the main location (/usr/bin).  Nagios XI still works fine (for me).  No specification for --bindir usually puts installation files in /usr/local/bin which may affect the script.
+
+
+Performance Graph with all perfdata disabled except In and Out Speed:
+
+![](img/TrafficSpeedGraph.png)
