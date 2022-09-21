@@ -86,6 +86,7 @@
 #       * 09_19_2022 Changed the perfdata output for in_ave and out_ave to keep in line with interface speed and units provided.  Will 
 #                    display 0.80Mbps instead of 800Kbps for example if units are set to m.
 #       * 09_19_2022 Fixed perfdata to conform to Nagios semicolon standards: https://nagios-plugins.org/doc/guidelines.html
+#       * 09_21_2022 Added an option to be able to disable RX and TX totals on output.
 #
 # Send us bug reports, questions and comments about this plugin.
 # Latest version of this software: http://exchange.nagios.org
@@ -179,31 +180,32 @@ my %STATUS_CODE =
   ( 'UNKNOWN' => '3', 'OK' => '0', 'WARNING' => '1', 'CRITICAL' => '2' );
 
 #default values;
-my $bits        = undef; 
-my $COMMUNITY	= "public";
-my $crit_usage	= 98;
-my $debug       = 0;
-my $force	= undef;
-my $if_status	= '4';
+my $bits          = undef; 
+my $COMMUNITY	  = "public";
+my $crit_usage	  = 98;
+my $debug         = 0;
+my $force	  = undef;
+my $if_status	  = '4';
 my ( $in_bytes, $out_bytes, $in_bytes32, $out_bytes32 ) = 0;
-my $label       = "";
-my $output      = "";
-my $snmp_version = 2;
-my $state       = "UNKNOWN";
-my $suffix      = "B";
-my $thirtytwo   = undef;
-my $use_reg     = undef;  # Use Regexp for name
-my $warn_usage  = 85;
-my $timeout     =  1000000;
-my $username    = undef;
-my $authpass    = undef;  # changed 20220919 by rm
-my $authproto   = 'MD5';
-my $authkey     = undef;  # added 20220919 by rm
-my $privpass    = undef;  # changed 20220919 by rm
-my $privproto   = 'DES';
-my $privkey     = undef;  # added 20220919 by rm
-my $seclevel    = undef;  # added 20220919 by rm
-my $contextname = undef;  # added 20220919 by rm
+my $label         = "";
+my $output        = "";
+my $snmp_version  = 2;
+my $state         = "UNKNOWN";
+my $suffix        = "B";
+my $thirtytwo     = undef;
+my $use_reg       = undef;  # Use Regexp for name
+my $warn_usage    = 85;
+my $timeout       = 1000000;
+my $username      = undef;
+my $authpass      = undef;  # changed 20220919 by rm
+my $authproto     = 'MD5';
+my $authkey       = undef;  # added 20220919 by rm
+my $privpass      = undef;  # changed 20220919 by rm
+my $privproto     = 'DES';
+my $privkey       = undef;  # added 20220919 by rm
+my $seclevel      = undef;  # added 20220919 by rm
+my $contextname   = undef;  # added 20220919 by rm
+my $disabletotals;          # added 20220921 by rm
 
 #cosmetic changes 20050614 by mw, see old versions for detail
 # Added options for bits and second max ifspeed 20100202 by gj
@@ -232,6 +234,7 @@ my $status = GetOptions(
         "v|Version=s"                  => \$snmp_version,
         "M|max=i"                      => \$max_value, #added 20050614 by mw
         "x|privproto=s"                => \$privproto,
+        "t|disabletotals"              => \$disabletotals,
         "q|disableperf=s"              => \$disableperf,
         "X|privpass=s"                 => \$privpass, #changed 20220919 by rm
         "y|authkey=s"                  => \$authkey, #added 20220919 by rm
@@ -803,7 +806,9 @@ if ( ( $in_ave_pct < $warn_usage ) and ( $out_ave_pct < $warn_usage ) ) {
 	"$state - Average IN: "
 	  . $in_ave . $suffix . "ps (" . $in_ave_pct . "%), " 
 	  . "Average OUT: " . $out_ave . $suffix . "ps (" . $out_ave_pct . "%)";
-	$output .= "Total RX: $in_tot" . "$label, Total TX: $out_tot" . "$label";
+        # changed 20220921
+        # allowed this output to be disabled
+	if ( !$disabletotals ) { $output .= " Total RX: $in_tot" . "$label, Total TX: $out_tot" . "$label"; }
 } elsif ( $in_ave_pct > $crit_usage ) {
 	$state = 'CRITICAL';
 	$output = "$state - IN bandwidth ($in_ave_pct%) too high";
