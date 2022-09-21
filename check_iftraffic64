@@ -1083,7 +1083,7 @@ sub debugout {
 #Couldn't sustain "HERE";-), either.
 sub print_usage {
 	print <<EOU;
-    Usage: check_iftraffic64.pl -H host [ -C community_string ] [ -i if_index|if_descr ] [ -r ] [ -b if_max_speed_in | -I if_max_speed_in ] [ -O if_max_speed_out ] [ -u ] [ -B ] [ --32bit ] [ -f ] [ -L ] [ -M ] [ -w warn ] [ -c crit ] [ -v 1|2|3 ] [ --username <username> ] [ --contextname <contextname> ] [ --authpassword <authpassword> ] [ --authprotocol MD5|SHA ] [ --privpassword <privpassword> ] [ --privprotocol DES|3DES|AES|AES192|AES256|AES256C ] [ --authkey <authkey> ] [ --privkey <privkey> ] [ -q abcdefgh ]
+    Usage: check_iftraffic64.pl -H host [ -C community_string ] [ -i if_index|if_descr ] [ -r ] [ -b if_max_speed_in | -I if_max_speed_in ] [ -O if_max_speed_out ] [ -u ] [ -B ] [ --32bit ] [ -f ] [ -L ] [ -M ] [ -w warn ] [ -c crit ] [ -v 1|2|3 ] [ --username <username> ] [ --contextname <contextname> ] [ --authpassword <authpassword> ] [ --authprotocol MD5|SHA ] [ --privpassword <privpassword> ] [ --privprotocol DES|3DES|AES|AES192|AES256|AES256C ] [ --authkey <authkey> ] [ --privkey <privkey> ] [ -q abcdefgh ] [ -t ]
 
     Example 1: check_iftraffic64.pl -H host1 -C sneaky
     Example 2: check_iftraffic64.pl -H host1 -C sneaky -i "Intel Pro" -r -B  
@@ -1144,6 +1144,8 @@ sub print_usage {
         SNMPv3 authentication password
     -a, --authproto=STRING
         SNMPv3 authentication protocol
+    -t, --disabletotals
+        Disables RX and TX Total output
     -q, --disableperf=STRING
         Disable specific perfdata 
         (a - InSpeed, b - OutSpeed, c - InUsage, d - OutUsage, e - InBwdth, f - OutBwdth, g - InAbsolute, f - OutAbsolute)
