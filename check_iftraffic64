@@ -234,8 +234,8 @@ my $status = GetOptions(
         "v|Version=s"                  => \$snmp_version,
         "M|max=i"                      => \$max_value, #added 20050614 by mw
         "x|privproto=s"                => \$privproto,
-        "t|disabletotals"              => \$disabletotals,
-        "q|disableperf=s"              => \$disableperf,
+        "t|disabletotals"              => \$disabletotals, #added 20220921 by rm
+        "q|disableperf=s"              => \$disableperf, #added 20220919 by rm
         "X|privpass=s"                 => \$privpass, #changed 20220919 by rm
         "y|authkey=s"                  => \$authkey, #added 20220919 by rm
         "z|privkey=s"                  => \$privkey, #added 20220919 by rm
