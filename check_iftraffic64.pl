@@ -188,7 +188,7 @@ my $label       = "";
 my $output      = "";
 my $snmp_version = 2;
 my $state       = "UNKNOWN";
-my $suffix      = "Bps";
+my $suffix      = "B";
 my $thirtytwo   = undef;
 my $use_reg     = undef;  # Use Regexp for name
 my $warn_usage  = 85;
@@ -288,9 +288,8 @@ if ( !defined($units) ){
 
 # Switch output from Bytes to bits if changed on command line
 if ($bits) {
-	$suffix = "bps"
+	$suffix = "b";
 }
-
 
 # Added to preserve iface native values 20220919 by rm
 if ( $iface_speed ) { $max_speed = $iface_speed; }
@@ -323,7 +322,7 @@ if ( !$max_value ) {
 
 debugout ("BYTE COUNTER max_value: $max_bytes", "2");
 
-# Added 20220919
+# Added 20220919 by rm
 # disable perfdata if requested
 if ($disableperf) {
         if ($disableperf =~ m/a/) { $pdInSpeed = 0; }
@@ -383,7 +382,7 @@ if ( $username and $authpass and $privpass ) {
         %snmpv3 = ( %snmpv3, %snmpv3nanp );
 }
 
-if ( $contextname ) { ( %snmpv3, Context    => $contextname, ); }
+if ( $contextname ) { %snmpv3 = ( %snmpv3, Context    => $contextname, ); }
 
 my %snmpv3key = (AuthLocalizedKey     => $authkey,
                  PrivLocalizedKey     => $privkey,);
@@ -803,8 +802,8 @@ if ( ( $in_ave_pct < $warn_usage ) and ( $out_ave_pct < $warn_usage ) ) {
 	$state = 'OK';
 	$output =
 	"$state - Average IN: "
-	  . $in_ave . $suffix . " (" . $in_ave_pct . "%), " 
-	  . "Average OUT: " . $out_ave . $suffix . " (" . $out_ave_pct . "%)";
+	  . $in_ave . $suffix . "ps (" . $in_ave_pct . "%), " 
+	  . "Average OUT: " . $out_ave . $suffix . "ps (" . $out_ave_pct . "%)";
 	$output .= "Total RX: $in_tot" . "$label, Total TX: $out_tot" . "$label";
 } elsif ( $in_ave_pct > $crit_usage ) {
 	$state = 'CRITICAL';
@@ -824,9 +823,26 @@ if ( ( $in_ave_pct < $warn_usage ) and ( $out_ave_pct < $warn_usage ) ) {
 # Changed 20091214 gj - commas should have been semicolons
 # Changed 20220919 rm - each perf output needs four semicolons.  Also made 
 # perfdata output custom depending on needs
+
 $output .= "|"; 
-if ($pdInSpeed) { $output .= "inSpeed=$in_ave;;;0;$max_speed "; } 
-if ($pdOutSpeed) { $output .= "outSpeed=$out_ave;;;0;$max_speedOut "; } 
+if ($pdInSpeed) { 
+        $output .= "inSpeed=$in_ave";
+        if ( $suffix =~ /[b]/ ) { 
+                $output .= lc $suffix;
+        } else {
+                $output .= $suffix;
+        }
+        $output .= "ps;;;0;$max_speed ";
+} 
+if ($pdOutSpeed) {
+        $output .= "outSpeed=$out_ave";
+        if ( $suffix =~ /[b]/ ) {
+                $output .= lc $suffix;
+        } else {
+                $output .= $suffix;
+        }
+        $output .= "ps;;;0;$max_speedOut ";
+} 
 if ($pdInUsage) { $output .= "inUsage=$in_ave_pct%;$warn_usage;$crit_usage;; "; }
 if ($pdOutUsage) { $output .= "outUsage=$out_ave_pct%;$warn_usage;$crit_usage;; "; }
 if ($pdInBwdth) { $output .= "inBandwidth=" . $pin_ave . "B;;;; "; }
@@ -891,6 +907,8 @@ sub fetch_Ip2IfIndex {
                         print "\t  $AllInterfaces[0][$n][1]\n";
                 $n++;
                 }
+                $state = 'OK';
+                stop("$state: Listed current interfaces.",$state);
         }
 
 	unless ( defined $snmpkey ) {
@@ -1033,7 +1051,7 @@ sub get_ip {
 	}
 }
 
-# Added 20220919 rjm
+# Added 20220919 rm
 # Grab SNMP results
 sub get_results {
         my ($oid, $inum, $smsg, $emsg) = @_;
