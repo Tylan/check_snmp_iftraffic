@@ -1,111 +1,42 @@
 #!/usr/bin/perl -w
-#
-# check_iftraffic.pl - Nagios(r) network traffic monitor plugin
-# Copyright (C) 2004 Gerd Mueller / Netways GmbH
-# $Id: check_iftraffic.pl 1119 2006-02-09 10:30:09Z gmueller $
-# Version: 1.0.0
-#
-# mw = Markus Werner mw+nagios@wobcom.de
-# Remarks (mw):
-#
-#	I adopted as much as possible the programming style of the origin code.
-#
-#	There should be a function to exit this program,
-#	instead of calling print and exit statements all over the place.
-#
-# minor changes by mw
-# 	The snmp if_counters on net devices can have overflows.
-#	I wrote this code to address this situation.
-#	It has no automatic detection and which point the overflow
-#	occurs but it will generate a warning state and you
-#	can set the max value by calling this script with an additional
-#	arg.
-#
-# minor cosmetic changes by mw
-#	Sorry but I couldn't sustain to clean up some things.
-#
-# gj = Greg Frater gregATfraterfactory.com
-# Remarks (gj):
-# minor (gj):
-# 
-#	* fixed the performance data, formating was not to spec
-# 	* Added a check of the interfaces status (up/down).
-#	  If interface is down the check returns a critical status.
-# 	* Support both textual or the numeric index values.
-#	* If the interface speed is not specified on the command line
-#	  it gets it automatically from IfHighSpeed (or ifSpeed if IfHighSpeed
-#	  counter is not available)
-#	* Added option to specify a second Speed parameter to allow for 
-#	  asymetrcal links such as a DSL line or cable modem where the 
-#	  download and upload speeds are different
-#	* Added -B option to display results in bits/sec instead of Bytes/sec
-#	* Added the current usage in Bytes/s (or bit/s) to the perfdata output
-#	* Added ability for plugin to determine interface to query by matching IP 
-#	  address of host with entry in ipAdEntIfIndex (.1.3.6.1.2.1.4.20.1.2) 
-#	* Added -L flag to list entries found in the ipAdEntIfIndex table
-#	  Otherwise, it works as before.
-#	* resorted options in help 
-#	* Added auto detection mode (now the default), tries 64 bit counters first then uses 32 
-#	  bit if 64 bit values are not available
-#	* Added force flag to force 64 or 32 bit only mode (disables auto detection)
-#	* Reworked the status output, tried to make it a little more readable
-#	* Cleaned up logic of Units designator inside script
-#	* Added checks for bad interface speed values (zero, error, etc.)
-#	* 12_09_2014 Fixed unit label issue (thanks Gerhard Mourani for catching it)
-#	* 12_09_2014 Changed labels from index -> interface on output when interface is not up
-#	* 12_09_2014 Removed spurious '<br>' from output
-#	* 12_09_2014 Changed the $suffix from 'Bs' or 'bs' to 'B' or 'b'
-#	* 12_10_2014 Fixed issue when using string description for interface printing extra line with interface name and OID
-#	* 07_06_2015 Added SNMP v3 support, base code provided by Rogerio Tomassoni de Araujo Junio <rogerio.tomassoni (at) cnpem.br>
-#	* 12_02_2015 Set the inbandwidth and outbandwidth of the perfdata to a fixed base unit (bits or Bytes depending on switches used).
-#	* 	     Thanks to Philip Ho <pcbho (at) hku.hk> and Fai Wong <fai.wong (at) masterson-tech.com> for pointing this out. 
-#	* 12_08_2015 Fixed 'Return code of 25 is out of bounds' errors with an internal timeout setting.  Thanks to Philip Ho
-#		     <pcbho (at) hku.hk> for directing me to the underlying problem
-# 		     based on check_traffic from Adrian Wieczorek, <ads (at) irc.pila.pl>
-#	* 05_13_2016 Changed perf data for in_ave and out_ave to always be in Bytes (no Bits allowed) to align with perf data output rules
-#		     Thanks to Mark Rittinghaus <rittinghaus.mark (at) lumberg.com> for pointing this out and recommending a fix.
-#	* 05_13_2016 Changed perf data for absolute Bytes ($in_bytes_abs/$out_bytes_abs) from Bytes units to 'c' for continuous
-#		     Thanks to Mark Rittinghaus <rittinghaus.mark (at) lumberg.com> for suggesting this change.
-#	* 03_27_2018 No functional changes, just some code comment cleanup.
-#
-# rm = Robert McLoughlin rmcloughlinAToutlook.com
-# Remarks (rm):
-#
-#       This script was written utilizing Net::SNMP which in my view is an antiquated module.  Net-SNMP
-#       is more robust and future proof.  Compiled with --enable-blumenthal-aes allows use of more 
-#       encryption options:  AES-192 and AES-256 (also AES-256c for Cisco devices).
-#
-# minor (rm):
-#
-#       * 09_19_2022 Conversion from Net::SNMP to Net-SNMP.
-#       * 09_19_2022 Created get_results sub to simplify some code.
-#       * 09_19_2022 Added showing all interfaces with --list not just IP based ones.  We sometimes need to monitor L2 ports.
-#       * 09_19_2022 Cleaned up some code where appropriate.
-#       * 09_19_2022 Brought back Bps and bps.  It's more informative.
-#       * 09_19_2022 Added ability to remove certain perfdata.  Removes noise from stuff I don't care about.
-#       * 09_19_2022 Changed the perfdata output for in_ave and out_ave to keep in line with interface speed and units provided.  Will 
-#                    display 0.80Mbps instead of 800Kbps for example if units are set to m.
-#       * 09_19_2022 Fixed perfdata to conform to Nagios semicolon standards: https://nagios-plugins.org/doc/guidelines.html
-#       * 09_21_2022 Added an option to be able to disable RX and TX totals on output.
-#
-# Send us bug reports, questions and comments about this plugin.
-# Latest version of this software: http://exchange.nagios.org
-#
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307
-
+#########################################################
+#                                                       #
+#                                                       #
+#       SNMP Interface Traffic Check Plugin             #
+#                      for                              #
+#                Icinga / Nagios                        #
+#                                                       #
+#        Version 1.0.0 (September 22, 2022)             #
+#                by Bob McLoughlin                      #
+#         E-mail: rmcloughlin@outlook.com               #
+#                                                       #
+#                                                       #
+# Based on:                                             #
+# check_iftraffic64.pl                                  #
+#       Version .77 (March 27, 2018)                    #
+# ( by Greg Frater                                      #
+#       E-mail: gregATfraterfactory.com )               #
+#                                                       #
+# Which was further based on:                           #
+# check_iftraffic.pl                                    #
+#       Version     (June 14, 2005)                     #
+# ( by Markus Werner                                    #
+#       E-mail: mw+nagios@wobcom.de )                   #
+#                                                       #
+# Version History                                       #
+#   - Refer to CHANGELOG.md                             #
+#                                                       #
+#       Like the original, this plugin is distributed   #
+# under the GNU GPL license. You may re-destribute only #
+# according to the terms of the GNU GPL.                #
+#                                                       #
+#########################################################
+#########################################################
+#                                                       #
+# DEPENDS On                                            #
+# Net-SNMP                                              #
+#                                                       #
+#########################################################
 
 # Set Perl environ
 use strict;
