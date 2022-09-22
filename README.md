@@ -1,7 +1,7 @@
-# check_iftraffic64
-Nagios and Icinga Plugin for Checking Interface Traffic
+# check_snmp_iftraffic
+Nagios and Icinga Plugin for Checking Interface Traffic Statics
 
-Forked and modified.  Some things could have broke from version I forked from after I converted and modified to meet my specific wants and needs.
+Forked and modified from check_iftraffic64.  Some things could have broke from version I forked from after I converted and modified to meet my specific wants and needs.
 
 ### Prerequisites
 
