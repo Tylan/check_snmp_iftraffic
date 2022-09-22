@@ -3,7 +3,7 @@
 # check_iftraffic.pl - Nagios(r) network traffic monitor plugin
 # Copyright (C) 2004 Gerd Mueller / Netways GmbH
 # $Id: check_iftraffic.pl 1119 2006-02-09 10:30:09Z gmueller $
-# Version: .78
+# Version: 1.0.0
 #
 # mw = Markus Werner mw+nagios@wobcom.de
 # Remarks (mw):
