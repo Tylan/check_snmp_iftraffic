@@ -1,3 +1,10 @@
+<a name="1.0.1"></a>
+# [1.0.1](https://github.com/Tylan/check_snmp_iftraffic/compare/v1.0.0...v1.0.1) (2022-09-23)
+
+### Other Fixes
+
+* Changed commented section and moved changes to this file.
+
 <a name="1.0.0"></a>
 # [1.0.0] (Initial Release) (2022-09-22)
 
