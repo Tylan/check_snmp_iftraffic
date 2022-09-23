@@ -1,9 +1,17 @@
 <a name="1.0.1"></a>
 # [1.0.1](https://github.com/Tylan/check_snmp_iftraffic/compare/v1.0.0...v1.0.1) (2022-09-23)
 
+### Features
+
+* Added the ability to change SNMP timeout and retry values.
+
 ### Other Fixes
 
+* Removed regex option.
 * Changed commented section and moved changes to this file.
+* Renamed option variables so they can be distinguised as option variables.
+* Moved variable defintions around so they are grouped appropriately.
+* Changed and improved SIG{ALRM}.
 
 <a name="1.0.0"></a>
 # [1.0.0] (Initial Release) (2022-09-22)

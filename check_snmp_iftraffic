@@ -6,13 +6,13 @@
 #                      for                              #
 #                Icinga / Nagios                        #
 #                                                       #
-#        Version 1.0.0 (September 22, 2022)             #
+#        Version 1.0.1 (September 23, 2022)             #
 #                by Bob McLoughlin                      #
 #         E-mail: rmcloughlin@outlook.com               #
 #                                                       #
 #                                                       #
 # Based on:                                             #
-# check_iftraffic64.pl                                  #
+# check_snmp_iftraffic                                  #
 #       Version .77 (March 27, 2018)                    #
 # ( by Greg Frater                                      #
 #       E-mail: gregATfraterfactory.com )               #
@@ -40,65 +40,36 @@
 
 # Set Perl environ
 use strict;
-use lib qw ( /usr/local/nagios/libexec );
-use utils qw( %ERRORS $TIMEOUT &print_revision &support &usage );
+use lib qw ( /usr/local/nagios/libexec /usr/lib/nagios/plugins /usr/lib64/nagios/plugins );
+use utils qw( %ERRORS &print_revision );
 use Data::Dumper;
 use SNMP;
 use Getopt::Long;
 &Getopt::Long::config('bundling');
 
-use vars qw(
-  $PROGNAME $VERSION $opt_h $authproto $authpass $bits $COMMUNITY
-  $warn_usage $crit_usage $iface_speed $iface_speedOut $force 
-  $use_reg $contextname $seclevel $port $units $iface_descr
-  $host_address $index_list $debug $username $snmp_version $max_value
-  $privproto $disabletotals $disableperf $privpass $authkey $privkey
-  $thirtytwo $version
+use vars qw (
+  $PROGNAME $VERSION $opt_h $opt_authproto $opt_authpass $opt_bits $opt_community
+  $opt_warn_usage $opt_crit_usage $opt_iface_speed $opt_iface_speedOut $opt_force 
+  $opt_contextname $opt_port $opt_units $opt_iface_descr $opt_host_address $opt_index_list $opt_debug 
+  $opt_username $opt_snmpver $opt_max_value $opt_privproto $opt_disabletotals $opt_disableperf 
+  $opt_privpass $opt_authkey $opt_privkey $opt_thirtytwo $opt_version $opt_timeout $opt_retries
 );
 
 # config
 $PROGNAME    = $0;
-$VERSION     = '1.0.0';
+$VERSION     = '1.0.1';
 
 # Set script parameters
-my $error;
-my $host_address;
-my $iface_descr;
-my $iface_number;
-my $iface_speed;
-my $iface_speedOut;
-my $ifspeed64;
-my $ifspeed32;
-my $inbytes64;
-my $inbytes32;
-my $outbytes64;
-my $outbytes32;
-my $in_ave 	 = 0;
-my $pin_ave 	 = 0;
-my $in_tot 	 = 0;
-my $index_list;
-my $max_value; #added 20050614 by mw
-my $max_bytes;
-my $opt_h;
-my $out_ave	 = 0;
-my $pout_ave	 = 0;
-my $port 	 = 161;
-my $out_tot 	 = 0;
-my $response;
-my $session;
+my ( $in_bytes, $out_bytes, $in_bytes32, $out_bytes32, $in_ave, $pin_ave, $in_tot, $out_ave, $pout_ave, $out_tot ) = 0;
+my ( $pdInSpeed, $pdOutSpeed, $pdInUsage, $pdOutUsage, $pdInBwdth, $pdOutBwdth, $pdInAbs, $pdOutAbs ) = 1;
+my ( $error, $iface_number, $ifspeed64, $ifspeed32, $inbytes64, $inbytes32, $outbytes64, $outbytes32,
+     $max_bytes, $response, $session, $max_speed, $max_speedOut, $timeout);
 my @snmpoids;
-my $units;
-my $disableperf;
-my $max_speed;
-my $max_speedOut;
-my $pdInSpeed    = 1;
-my $pdOutSpeed   = 1;
-my $pdInUsage    = 1;
-my $pdOutUsage   = 1;
-my $pdInBwdth    = 1;
-my $pdOutBwdth   = 1;
-my $pdInAbs      = 1;
-my $pdOutAbs     = 1;
+my $if_status     = '4';
+my $label         = '';
+my $output        = '';
+my $state         = 'UNKNOWN';
+my $suffix        = 'B';
 
 # SNMP OIDs for Traffic
 my $snmpIfOperStatus 	= '1.3.6.1.2.1.2.2.1.8';	# Operational state of interface (i.e. 1-up, 2-down, etc.)
@@ -110,7 +81,6 @@ my $snmpIfDescr     	= '1.3.6.1.2.1.2.2.1.2';	# Textual string describing interf
 my $snmpIfSpeed32     	= '1.3.6.1.2.1.2.2.1.5'; 	# bits per second
 my $snmpIfSpeed    	= '1.3.6.1.2.1.31.1.1.1.15'; 	# Mbits per second
 my $snmpIPAdEntIfIndex 	= '1.3.6.1.2.1.4.20.1.2'; 	# Index of interface using hosts IP addr
-
 
 # Path to  tmp files
 my $TRAFFIC_FILE = "/usr/local/nagios/libexec/traffic/";
@@ -125,116 +95,113 @@ if ( ! -d $TRAFFIC_FILE ) {
 my %STATUS_CODE =
   ( 'UNKNOWN' => '3', 'OK' => '0', 'WARNING' => '1', 'CRITICAL' => '2' );
 
-#default values;
-my $bits          = undef; 
-my $COMMUNITY	  = "public";
-my $crit_usage	  = 98;
-my $debug         = 0;
-my $force	  = undef;
-my $if_status	  = '4';
-my ( $in_bytes, $out_bytes, $in_bytes32, $out_bytes32 ) = 0;
-my $label         = "";
-my $output        = "";
-my $snmp_version  = 2;
-my $state         = "UNKNOWN";
-my $suffix        = "B";
-my $thirtytwo     = undef;
-my $use_reg       = undef;  # Use Regexp for name
-my $warn_usage    = 85;
-my $timeout       = 1000000;
-my $username      = undef;
-my $authpass      = undef;  # changed 20220919 by rm
-my $authproto     = 'MD5';
-my $authkey       = undef;  # added 20220919 by rm
-my $privpass      = undef;  # changed 20220919 by rm
-my $privproto     = 'DES';
-my $privkey       = undef;  # added 20220919 by rm
-my $seclevel      = undef;  # added 20220919 by rm
-my $contextname   = undef;  # added 20220919 by rm
-my $disabletotals;          # added 20220921 by rm
-my $version       = undef;  # added 20220922 by rm
+# init options
+my $opt_h              = undef;
+my $opt_version        = undef;
+my $opt_bits           = undef; 
+my $opt_community      = 'public';
+my $opt_port 	       = 161;
+my $opt_crit_usage     = 98;
+my $opt_debug          = 0;
+my $opt_force          = undef;
+my $opt_snmpver        = 2;
+my $opt_thirtytwo      = undef;
+my $opt_warn_usage     = 85;
+my $opt_username       = undef;
+my $opt_authpass       = undef;
+my $opt_authproto      = undef;
+my $opt_authkey        = undef;
+my $opt_privpass       = undef;
+my $opt_privproto      = undef;
+my $opt_privkey        = undef;
+my $opt_contextname    = undef;
+my $opt_disabletotals  = undef;
+my $opt_iface_speed    = undef;
+my $opt_iface_speedOut = undef;
+my $opt_index_list     = undef;
+my $opt_max_value      = undef; #added 20050614 by mw
+my $opt_host_address   = undef;
+my $opt_iface_descr    = undef;
+my $opt_units          = 'm';
+my $opt_disableperf    = undef;
+my $opt_timeout        = 10;
+my $opt_retries        = 5;
 
-#cosmetic changes 20050614 by mw, see old versions for detail
-# Added options for bits and second max ifspeed 20100202 by gj
-# Added options for specific IP addr to match 20100405 by gj
 my $status = GetOptions(
+        "a|authproto=s"                => \$opt_authproto,
+        "A|authpass=s"                 => \$opt_authpass,
+        "b|bandwidth|I|inBandwidth=i"  => \$opt_iface_speed,
+        "B|bits"                       => \$opt_bits,
+        "c|critical=s"                 => \$opt_crit_usage,
+        "C|community=s"                => \$opt_community,
+        "d|debug=i"                    => \$opt_debug,
+        "f|force"                      => \$opt_force, #added 20130429 by gjf
         "h|help"                       => \$opt_h,
-        "a|authproto=s"                => \$authproto,
-        "A|authpass=s"                 => \$authpass, # changed 20220919 by rm
-        "B|bits"                       => \$bits,
-        "C|community=s"                => \$COMMUNITY,
-        "w|warning=s"                  => \$warn_usage,
-        "c|critical=s"                 => \$crit_usage,
-        "b|bandwidth|I|inBandwidth=i"  => \$iface_speed,
-        "O|outBandwidth=i"             => \$iface_speedOut,
-        "f|force"                      => \$force, #added 20130429 by gjf
-        "r|noregxp"                    => \$use_reg,           
-        "n|contextname=s"              => \$contextname, #added 20220919 by rm
-        "S|seclevel=s"                 => \$seclevel, #added 20220919 by rm
-        "p|port=i"                     => \$port,
-        "u|units=s"                    => \$units,
-        "i|interface=s"                => \$iface_descr,
-        "H|hostname=s"                 => \$host_address,
-        "L|list"                       => \$index_list,
-        "d|debug=i"                    => \$debug,
-        "user|username=s"              => \$username,
-        "v|snmpversion=s"              => \$snmp_version,
-        "V|version"                    => \$version,
-        "M|max=i"                      => \$max_value, #added 20050614 by mw
-        "x|privproto=s"                => \$privproto,
-        "t|disabletotals"              => \$disabletotals, #added 20220921 by rm
-        "q|disableperf=s"              => \$disableperf, #added 20220919 by rm
-        "X|privpass=s"                 => \$privpass, #changed 20220919 by rm
-        "y|authkey=s"                  => \$authkey, #added 20220919 by rm
-        "z|privkey=s"                  => \$privkey, #added 20220919 by rm
-        "32|32bit"                     => \$thirtytwo #added 20101104 by gjf
+        "H|hostname=s"                 => \$opt_host_address,
+        "i|interface=s"                => \$opt_iface_descr,
+        "L|list"                       => \$opt_index_list,
+        "M|max=i"                      => \$opt_max_value, #added 20050614 by mw
+        "n|contextname=s"              => \$opt_contextname,
+        "O|outBandwidth=i"             => \$opt_iface_speedOut,
+        "p|port=i"                     => \$opt_port,
+        "q|disableperf=s"              => \$opt_disableperf,
+        "r|retries=i"                  => \$opt_retries,
+        "t|disabletotals"              => \$opt_disabletotals,
+        "T|timeout=i"                  => \$opt_timeout,
+        "u|units=s"                    => \$opt_units,
+        "user|username=s"              => \$opt_username,
+        "v|snmpver=s"                  => \$opt_snmpver,
+        "V|version"                    => \$opt_version,
+        "w|warning=s"                  => \$opt_warn_usage,
+        "x|privproto=s"                => \$opt_privproto,
+        "X|privpass=s"                 => \$opt_privpass,
+        "y|authkey=s"                  => \$opt_authkey,
+        "z|privkey=s"                  => \$opt_privkey,
+        "32|32bit"                     => \$opt_thirtytwo #added 20101104 by gjf
 );
 
-# Set internal timeout to address 'Return code of 25 is out of bounds' errors
-eval {
-	local %SIG;
-	$SIG{ALRM}=
-		sub{ 
-			die "UKNOWN: script timeout\n"; 
-			exit -1;
-		};
-	alarm 15;
+# set alarm in case we hang
+$SIG{ALRM} = sub {
+         print "CRITICAL - Timeout after " . $opt_timeout * ( $opt_retries + 1 ) . " seconds\n";
+         exit($ERRORS{'CRITICAL'});
+};
+alarm( $opt_timeout * ( $opt_retries + 1 ) );
 
 # Print help if no options given
-if ( $status == 0 ) {
-	print_help();
+if ( $opt_h ) {
+	print_usage();
 	exit $STATUS_CODE{'OK'};
 }
 
-if($version) {
+if($opt_version) {
   print_version();
   exit $STATUS_CODE{'OK'};
 }
 
-debugout ("DEBUG ENABLED at level: $debug", "1");
-debugout ("INTERFACE DESCR: $iface_descr", "2"), if ( defined($iface_descr) );
+debugout ("DEBUG ENABLED at level: $opt_debug", "1");
+debugout ("INTERFACE DESCR: $opt_iface_descr", "2"), if ( defined($opt_iface_descr) );
 
 # Changed 20091214 gj
 # Check for missing options
-if ( !$host_address )  {
+if ( !$opt_host_address )  {
 	print  "\nMissing host address!\n\n";
 	stop(print_usage(),"OK");
-} elsif ( ( $iface_speed ) and ( !$units ) ){
+} elsif ( ( $opt_iface_speed ) and ( !$opt_units ) ){
 	print "\nMissing units!\n\n";
         stop(print_usage(),"OK");
-} elsif ( ( $units ) and ( ( !$iface_speed ) and  ( !$iface_speedOut ) ) ) {
+} elsif ( ( $opt_units ) and ( ( !$opt_iface_speed ) and  ( !$opt_iface_speedOut ) ) ) {
 	print "\nMissing (-I or -O) interface maximum speed!\n\n";
 	stop(print_usage(),"OK");
-} elsif ( ( $iface_speedOut ) and ( !$units ) ) {
+} elsif ( ( $opt_iface_speedOut ) and ( !$opt_units ) ) {
 	print "\nMissing units (-u) for Out maximum speed!\n\n";
 	stop(print_usage(),"OK");
-} elsif ( ( $max_value ) and ( !$units ) ) {
+} elsif ( ( $opt_max_value ) and ( !$opt_units ) ) {
 	print "\nMissing units (-u) for maximum counter!\n\n";
 	stop(print_usage(),"OK");
-} elsif ( ( $snmp_version == 3 ) and ( $authpass ) and ( !$username ) ) {
+} elsif ( ( $opt_snmpver == 3 ) and ( $opt_authpass ) and ( !$opt_username ) ) {
 	print "\nMissing version 3 username!\n\n";
 	stop(print_usage(),"OK");
-} elsif ( ( $snmp_version == 3 ) and ( $privpass ) and ( !$authpass ) ) {
+} elsif ( ( $opt_snmpver == 3 ) and ( $opt_privpass ) and ( !$opt_authpass ) ) {
 	print "\nMissing version 3 auth password!\n\n";
 	stop(print_usage(),"OK");
 }
@@ -244,97 +211,96 @@ sub print_version {
 }
 
 # Set default units if undefined
-if ( !defined($units) ){
+if ( !defined($opt_units) ){
 	#bits
-	$units = "b";
+	$opt_units = "b";
 }
 
 # Switch output from Bytes to bits if changed on command line
-if ($bits) {
+if ($opt_bits) {
 	$suffix = "b";
 }
 
-# Added to preserve iface native values 20220919 by rm
-if ( $iface_speed ) { $max_speed = $iface_speed; }
-if ( $iface_speedOut ) { $max_speedOut = $iface_speedOut; } else { $max_speedOut = $iface_speed; }
+# Convert timeout to microseconds
+$timeout = ($opt_timeout * 1000000);
 
-if ( $iface_speed ) {
+# Added to preserve iface native values 20220919 by rm
+if ( $opt_iface_speed ) { $max_speed = $opt_iface_speed; }
+if ( $opt_iface_speedOut ) { $max_speedOut = $opt_iface_speedOut; } else { $max_speedOut = $opt_iface_speed; }
+
+if ( $opt_iface_speed ) {
 	#change 20050414 by mw
 	# Added iface_speedOut 20100202 by gj
 	# Convert interface speed to Bytes
-	debugout("UNIT: $units","3");
-	$iface_speed = bits2bytes( $iface_speed, $units );
-	if ( $iface_speedOut ) {
-		$iface_speedOut = bits2bytes( $iface_speedOut, $units );
+	debugout("UNIT: $opt_units","3");
+	$opt_iface_speed = bits2bytes( $opt_iface_speed, $opt_units );
+	if ( $opt_iface_speedOut ) {
+		$opt_iface_speedOut = bits2bytes( $opt_iface_speedOut, $opt_units );
 	}
 }
 
-if ( !$max_value ) {
+if ( !$opt_max_value ) {
 
 	# If no -M Parameter was set, set it to 64Bit Overflow
 	$max_bytes = 18446744073709600000;    # the value is (2^64)
 
-	if ( defined($thirtytwo) ){
+	if ( defined($opt_thirtytwo) ){
 		# If using 32bit counters set to 32bit overflow
 		$max_bytes = 4294967296;    # the value is (2^32)
 	}
 } else {
 	# Max value specified, used given value, convert to Bytes
-        $max_bytes = unit2bytes( $max_value, $units );
+        $max_bytes = unit2bytes( $opt_max_value, $opt_units );
 }
 
 debugout ("BYTE COUNTER max_value: $max_bytes", "2");
 
-# Added 20220919 by rm
 # disable perfdata if requested
-if ($disableperf) {
-        if ($disableperf =~ m/a/) { $pdInSpeed = 0; }
-        if ($disableperf =~ m/b/) { $pdOutSpeed = 0; }
-        if ($disableperf =~ m/c/) { $pdInUsage = 0; }
-        if ($disableperf =~ m/d/) { $pdOutUsage = 0; }
-        if ($disableperf =~ m/e/) { $pdInBwdth = 0; }
-        if ($disableperf =~ m/f/) { $pdOutBwdth = 0; }
-        if ($disableperf =~ m/g/) { $pdInAbs = 0; }
-        if ($disableperf =~ m/h/) { $pdOutAbs = 0; }
+if ($opt_disableperf) {
+        if ($opt_disableperf =~ m/a/) { $pdInSpeed = 0; }
+        if ($opt_disableperf =~ m/b/) { $pdOutSpeed = 0; }
+        if ($opt_disableperf =~ m/c/) { $pdInUsage = 0; }
+        if ($opt_disableperf =~ m/d/) { $pdOutUsage = 0; }
+        if ($opt_disableperf =~ m/e/) { $pdInBwdth = 0; }
+        if ($opt_disableperf =~ m/f/) { $pdOutBwdth = 0; }
+        if ($opt_disableperf =~ m/g/) { $pdInAbs = 0; }
+        if ($opt_disableperf =~ m/h/) { $pdOutAbs = 0; }
 }
-
-####### Can only be set after interface 'speed in' and 'out' and 'max bytes' have all been converted to Bytes
-# Bytes
-#$units = "B";
 
 # Check snmp version, set snmp parameters
 # changed 20220919 by rm
 
-if (!$authpass) { $authpass = $authkey; }
-if (!$privpass) { $privpass = $privkey; }
+if (!$opt_authpass) { $opt_authpass = $opt_authkey; }
+if (!$opt_privpass) { $opt_privpass = $opt_privkey; }
 
 #base snmp arguments
-my %snmpargs = (DestHost      => $host_address,
-                Version       => $snmp_version,
-                RemotePort    => $port,
+my %snmpargs = (DestHost      => $opt_host_address,
+                Version       => $opt_snmpver,
+                RemotePort    => $opt_port,
                 Timeout       => $timeout,
+                Retries       => $opt_retries,
 );
 
 #snmp v1 and v2c specific arguments
-my %snmpv12 = ( Community  => $COMMUNITY, );
+my %snmpv12 = ( Community  => $opt_community, );
 
 #snmpv3 arguments
 #base
-my %snmpv3 = ( SecName     => $username, );
+my %snmpv3 = ( SecName     => $opt_username, );
 
-if ( $username and $authpass and $privpass ) {
+if ( $opt_username and $opt_authpass and $opt_privpass ) {
         #authPriv
         my %snmpv3ap = ( SecLevel    => 'authPriv',
-                         AuthPass    => $authpass,
-                         AuthProto   => $authproto,
-                         PrivPass    => $privpass,
-                         PrivProto   => $privproto, );
+                         AuthPass    => $opt_authpass,
+                         AuthProto   => $opt_authproto,
+                         PrivPass    => $opt_privpass,
+                         PrivProto   => $opt_privproto, );
         %snmpv3 = ( %snmpv3, %snmpv3ap );
-} elsif ( $username and $authpass ) {
+} elsif ( $opt_username and $opt_authpass ) {
         #authNoPriv
         my %snmpv3anp = ( SecLevel    => 'authNoPriv',
-                          AuthPass    => $authpass,
-                          AuthProto   => $authproto, );
+                          AuthPass    => $opt_authpass,
+                          AuthProto   => $opt_authproto, );
         %snmpv3 = ( %snmpv3, %snmpv3anp );
 } else {
         #noAuthNoPriv
@@ -342,56 +308,54 @@ if ( $username and $authpass and $privpass ) {
         %snmpv3 = ( %snmpv3, %snmpv3nanp );
 }
 
-if ( $contextname ) { %snmpv3 = ( %snmpv3, Context    => $contextname, ); }
+if ( $opt_contextname ) { %snmpv3 = ( %snmpv3, Context    => $opt_contextname, ); }
 
-my %snmpv3key = ( AuthLocalizedKey     => $authkey,
-                  PrivLocalizedKey     => $privkey, );
+my %snmpv3key = ( AuthLocalizedKey     => $opt_authkey,
+                  PrivLocalizedKey     => $opt_privkey, );
 
-if ( $snmp_version le 2 ) {
+if ( $opt_snmpver le 2 ) {
         %snmpargs = ( %snmpargs, %snmpv12 );
-} elsif ( $snmp_version eq 3 ) {
-        if ( $authkey or $privkey ) {
+} elsif ( $opt_snmpver eq 3 ) {
+        if ( $opt_authkey or $opt_privkey ) {
                 %snmpargs = ( %snmpargs, %snmpv3, %snmpv3key );
         } else {
                 %snmpargs = ( %snmpargs, %snmpv3 );
         }
 } else {
 	$state = 'UNKNOWN';
-	stop( "$state: It appears you are missing one or more parameters necessary for v$snmp_version to function.\n",$state );
+	stop( "$state: It appears you are missing one or more parameters necessary for v$opt_snmpver to function.\n",$state );
 }
 $session = new SNMP::Session( %snmpargs );
 
-debugout("SNMP:\n\tver: $snmp_version\n\tcommunity: $COMMUNITY\n\tport: $port", "3");
-if ( $username ) {
-	debugout("\n\tuser: $username", "3");
+debugout("SNMP:\n\tver: $opt_snmpver\n\tcommunity: $opt_community\n\tport: $opt_port", "3");
+if ( $opt_username ) {
+	debugout("\n\tuser: $opt_username", "3");
 }
-if ( $authpass ) {
-	debugout("\n\tauth password: $authpass\n\tauth protocol: $authproto", "3");
+if ( $opt_authpass ) {
+	debugout("\n\tauth password: $opt_authpass\n\tauth protocol: $opt_authproto", "3");
 }
-if ( $privpass ) {
-	debugout("\n\tpriv password: $privpass\n\tpriv protocol: $privproto", "3");
+if ( $opt_privpass ) {
+	debugout("\n\tpriv password: $opt_privpass\n\tpriv protocol: $opt_privproto", "3");
 }
 
-# Moved here 20220919 rm
 # convert to IP
-if ( $host_address =~ /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/ ) {
+if ( $opt_host_address =~ /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/ ) {
 } else {
-        $host_address = get_ip ( $host_address );
+        $opt_host_address = get_ip ( $opt_host_address );
 }
 
-# Changed 20220919 rm
 # Interface Index was not specified 
-if ( !$iface_descr ) {
-        $iface_descr = fetch_Ip2IfIndex( $session, $host_address );
+if ( !$opt_iface_descr ) {
+        $opt_iface_descr = fetch_Ip2IfIndex( $session, $opt_host_address );
 }
 
 # Added 20091209 gj
 # Detect if a string description was given or a numeric interface index number 
-if ( $iface_descr =~ /[^0123456789]+/ ) {
-	$iface_number = fetch_ifdescr( $session, $iface_descr );
+if ( $opt_iface_descr =~ /[^0123456789]+/ ) {
+	$iface_number = fetch_ifdescr( $session, $opt_iface_descr );
 	debugout("INTERFACE from text string","1"); 
 } else {
-	$iface_number = $iface_descr;
+	$iface_number = $opt_iface_descr;
 }
 
 debugout("USING INT#: $iface_number", "2");
@@ -406,8 +370,6 @@ debugout("\tOutOctets32: $snmpIfOutOctets32.$iface_number","2");
 
 # Get SNMP values, flag errors
 debugout("RESULTS:","3");
-#my $res_status    = $session->get(new SNMP::Varbind( [$snmpIfOperStatus . "." . $iface_number ] ));
-
 # Changed 20220919 rm
 # Simplified
 my $res_status     = get_results($snmpIfOperStatus, $iface_number, "Operational Status", "not defined");
@@ -463,12 +425,12 @@ if ( defined $res_status ){
 }
 
 # Determine which values to use
-if ( !defined($force) and !defined($thirtytwo) ){
+if ( !defined($opt_force) and !defined($opt_thirtytwo) ){
 	#default - use 64 then 32 bit values 
 	debugout("USING 64 THEN 32 bit VALUES:","4");
 
 	# Speed test
-	if ( !$iface_speed ) {
+	if ( !$opt_iface_speed ) {
 		debugout("\t(Interface speed not provided on command line, determine from host)","4");
 		if ( $ifspeed64 =~ /^DNE -|error|noSuchObject|noSuchInstance/i or $ifspeed64 < 1 ){
 			debugout("\t\tBad 64bit speed value: $ifspeed64","3");
@@ -478,13 +440,13 @@ if ( !defined($force) and !defined($thirtytwo) ){
 				stop("$state: No usable interface speed available 64: $ifspeed64 32: $ifspeed32\n",$state);
 			} else {
 				debugout("\tUsing 32bit speed value: $ifspeed32","3");
-				$iface_speed = bits2bytes( $ifspeed32, "b" );
+				$opt_iface_speed = bits2bytes( $ifspeed32, "b" );
 			}
 		} else {
 			debugout("\tUsing 64bit speed value: $ifspeed64","3");
 			# Convert Mbits to bits, bits to Bytes
-			$iface_speed = $ifspeed64 * 1000 * 1000;
-			$iface_speed = bits2bytes( $iface_speed, "b" );
+			$opt_iface_speed = $ifspeed64 * 1000 * 1000;
+			$opt_iface_speed = bits2bytes( $opt_iface_speed, "b" );
 		}
 	}
 
@@ -520,11 +482,11 @@ if ( !defined($force) and !defined($thirtytwo) ){
 		$out_bytes = $outbytes64;
 	}	
 
-} elsif ( !defined($force) and defined($thirtytwo) ){
+} elsif ( !defined($opt_force) and defined($opt_thirtytwo) ){
 	debugout("USING 32 THEN 64 bit VALUES:","4");
 
 	# Speed test
-	if ( !$iface_speed ) {
+	if ( !$opt_iface_speed ) {
 		debugout("\t(Interface speed not provided on command line, determine from host)","4");
 		if ( $ifspeed32 =~ /^DNE -|error|noSuchObject|noSuchInstance/i or $ifspeed32 < 1 or $ifspeed32 >= 4294967295 ){
 			debugout("\t\tBad 32bit speed value: $ifspeed32","3");
@@ -535,12 +497,12 @@ if ( !defined($force) and !defined($thirtytwo) ){
 			} else {
 				debugout("\tUsing 64bit speed value: $ifspeed64","3");
 				# Convert Mbits to bits, bits to Bytes
-				$iface_speed = $ifspeed64 * 1000 * 1000;
-				$iface_speed = bits2bytes( $iface_speed, "b" );
+				$opt_iface_speed = $ifspeed64 * 1000 * 1000;
+				$opt_iface_speed = bits2bytes( $opt_iface_speed, "b" );
 			}
 		} else {
 			debugout("\tUsing 32bit speed value: $ifspeed32","3");
-			$iface_speed = bits2bytes( $ifspeed32, "b" );
+			$opt_iface_speed = bits2bytes( $ifspeed32, "b" );
 		}
 	}
 
@@ -576,11 +538,11 @@ if ( !defined($force) and !defined($thirtytwo) ){
 		$out_bytes = $outbytes32;
 	}	
 
-} elsif ( defined($force) and defined($thirtytwo) ){
+} elsif ( defined($opt_force) and defined($opt_thirtytwo) ){
 	debugout("USING 32 bit VALUES ONLY:","4");
 
 	# Speed test
-	if ( !$iface_speed ) {
+	if ( !$opt_iface_speed ) {
 		debugout("\t(Interface speed not provided on command line, determine from host)","4");
 		if ( $ifspeed32 =~ /^DNE -|error|noSuchObject|noSuchInstance/i or $ifspeed32 < 1 or $ifspeed32 > 4294967295 ){
 			debugout("\t\tBad 32bit speed value: $ifspeed32","3");
@@ -588,7 +550,7 @@ if ( !defined($force) and !defined($thirtytwo) ){
 			stop("$state: No usable interface speed available: $ifspeed32\n",$state);
 		} else {
 			debugout("\tUsing 32bit speed value: $ifspeed32","3");
-			$iface_speed = bits2bytes( $ifspeed32, "b" );
+			$opt_iface_speed = bits2bytes( $ifspeed32, "b" );
 		}
 	}
 
@@ -612,11 +574,11 @@ if ( !defined($force) and !defined($thirtytwo) ){
 		$out_bytes = $outbytes32;
 	}
 
-} elsif ( defined($force) and !defined($thirtytwo) ){
+} elsif ( defined($opt_force) and !defined($opt_thirtytwo) ){
 	debugout("USING 64 bit ONLY:","4");
 
 	# Speed test
-	if ( !$iface_speed ) {
+	if ( !$opt_iface_speed ) {
 		debugout("\t(Interface speed not provided on command line, determine from host)","4");
 		if ( $ifspeed64 =~ /^DNE -|error|noSuchObject|noSuchInstance/i or $ifspeed64 < 1 ){
 			debugout("\t\tBad 64bit speed value: $ifspeed64","3");
@@ -625,8 +587,8 @@ if ( !defined($force) and !defined($thirtytwo) ){
 		} else {
 			debugout("\tUsing 64bit speed value: $ifspeed64","3");
 			# Convert Mbits to bits, bits to Bytes
-			$iface_speed = $ifspeed64 * 1000 * 1000;
-			$iface_speed = bits2bytes( $iface_speed, "b" );
+			$opt_iface_speed = $ifspeed64 * 1000 * 1000;
+			$opt_iface_speed = bits2bytes( $opt_iface_speed, "b" );
 		}
 	}
 
@@ -654,13 +616,13 @@ if ( !defined($force) and !defined($thirtytwo) ){
 
 # Added 20100201 gj
 # Check if Out max speed was provided, use same IF speed for both if not
-if (!$iface_speedOut) {
-	$iface_speedOut = $iface_speed;
+if (!$opt_iface_speedOut) {
+	$opt_iface_speedOut = $opt_iface_speed;
 }
 
-debugout ("UNITS: $units", "2");
-debugout ("Interface speed calculated as: $iface_speed $units", "1");
-debugout ("Interface speed OUT: $iface_speedOut $units", "4");
+debugout ("UNITS: $opt_units", "2");
+debugout ("Interface speed calculated as: $opt_iface_speed $opt_units", "1");
+debugout ("Interface speed OUT: $opt_iface_speedOut $opt_units", "4");
 
 my $row;
 my $last_check_time = time - 1;
@@ -669,7 +631,7 @@ my $last_out_bytes  = $out_bytes;
 
 if (
 	open( FILE,
-		"<" . $TRAFFIC_FILE . $host_address . "_if-" . $iface_number )
+		"<" . $TRAFFIC_FILE . $opt_host_address . "_if-" . $iface_number )
   )
 {
 	while ( $row = <FILE> ) {
@@ -689,10 +651,10 @@ if (
 
 my $update_time = time;
 debugout ("CURRENT timestamp: $update_time", "1");
-debugout ("FILE PATH: $TRAFFIC_FILE" . $host_address . "_if-" . $iface_number, "1");
+debugout ("FILE PATH: $TRAFFIC_FILE" . $opt_host_address . "_if-" . $iface_number, "1");
 debugout("READ FROM FILE:\n\tlast time: $last_check_time\n\tlast in bytes: $last_in_bytes\n\tlast out bytes: $last_out_bytes","4");
 
-open( FILE, ">" . $TRAFFIC_FILE . $host_address . "_if-" . $iface_number )
+open( FILE, ">" . $TRAFFIC_FILE . $opt_host_address . "_if-" . $iface_number )
   or die "Can't open $TRAFFIC_FILE for writing: $!";
 
 printf FILE ( "%s:%.0ld:%.0ld\n", $update_time, $in_bytes, $out_bytes );
@@ -717,17 +679,17 @@ debugout("in_traffic: $in_traffic\nout_traffic: $out_traffic","1");
 my $in_bytes_abs  = $in_bytes;
 my $out_bytes_abs = $out_bytes;
 
-debugout("iface_speed: $iface_speed $units\nin_traffic: $in_traffic\nout_traffic: $out_traffic", "1");
+debugout("iface_speed: $opt_iface_speed $opt_units\nin_traffic: $in_traffic\nout_traffic: $out_traffic", "1");
 
 # Calculate usage percentages
-my $in_ave_pct  = sprintf( "%.2f", ( 1.0 * $in_traffic * 100 ) / $iface_speed );
-my $out_ave_pct = sprintf( "%.2f", ( 1.0 * $out_traffic * 100 ) / $iface_speedOut );
+my $in_ave_pct  = sprintf( "%.2f", ( 1.0 * $in_traffic * 100 ) / $opt_iface_speed );
+my $out_ave_pct = sprintf( "%.2f", ( 1.0 * $out_traffic * 100 ) / $opt_iface_speedOut );
 
 # Don't scale perf data or change it to bits from bytes
 $pin_ave = $in_traffic;
 $pout_ave = $out_traffic;
 
-if ($bits) {
+if ($opt_bits) {
 	# Convert output from Bytes to bits
 	$label = "bits";
 	$in_tot = $in_bytes * 8;
@@ -747,10 +709,10 @@ debugout("\tin_tot: $in_tot\n\tout_tot: $out_tot\n\tin_ave: $in_ave\n\tout_ave: 
 debugout("\tin_ave_pct: $in_ave_pct\n\tout_ave_pct: $out_ave_pct\n\tin_bytes_abs: $in_bytes_abs\n\tout_bytes_abs: $out_bytes_abs", "4");
 
 # Scale ave and tot for output
-$in_tot = unit2scale($in_tot, $units);
-$out_tot = unit2scale($out_tot, $units);
-$in_ave = unit2scale($in_ave, $units);
-$out_ave = unit2scale($out_ave, $units);
+$in_tot = unit2scale($in_tot, $opt_units);
+$out_tot = unit2scale($out_tot, $opt_units);
+$in_ave = unit2scale($in_ave, $opt_units);
+$out_ave = unit2scale($out_ave, $opt_units);
 
 # Convert from Bytes/bits to megaBytes/bits
 $in_bytes  = sprintf( "%.2f", $in_bytes / (1024 * 1000) );
@@ -758,7 +720,7 @@ $out_bytes = sprintf( "%.2f", $out_bytes / (1024 * 1000) );
 
 # Changed 20091209 gj, updated 20130424 gj
 # Check/Set state of service check
-if ( ( $in_ave_pct < $warn_usage ) and ( $out_ave_pct < $warn_usage ) ) {
+if ( ( $in_ave_pct < $opt_warn_usage ) and ( $out_ave_pct < $opt_warn_usage ) ) {
 	$state = 'OK';
 	$output =
 	"$state - Average IN: "
@@ -766,17 +728,17 @@ if ( ( $in_ave_pct < $warn_usage ) and ( $out_ave_pct < $warn_usage ) ) {
 	  . "Average OUT: " . $out_ave . $suffix . "ps (" . $out_ave_pct . "%)";
         # changed 20220921
         # allowed this output to be disabled
-	if ( !$disabletotals ) { $output .= " Total RX: $in_tot" . "$label, Total TX: $out_tot" . "$label"; }
-} elsif ( $in_ave_pct > $crit_usage ) {
+	if ( !$opt_disabletotals ) { $output .= " Total RX: $in_tot" . "$label, Total TX: $out_tot" . "$label"; }
+} elsif ( $in_ave_pct > $opt_crit_usage ) {
 	$state = 'CRITICAL';
 	$output = "$state - IN bandwidth ($in_ave_pct%) too high";
-} elsif ( $out_ave_pct > $crit_usage ) {
+} elsif ( $out_ave_pct > $opt_crit_usage ) {
 	$state = 'CRITICAL';
 	$output = "$state - OUT bandwidth ($out_ave_pct%) too high";
-} elsif ( $in_ave_pct > $warn_usage ) {
+} elsif ( $in_ave_pct > $opt_warn_usage ) {
 	$state = 'WARNING';
 	$output = "$state - IN bandwidth ($in_ave_pct%) too high";
-} elsif ( $out_ave_pct > $warn_usage ) {
+} elsif ( $out_ave_pct > $opt_warn_usage ) {
 	$state = 'WARNING';
 	$output = "$state - OUT bandwidth ($out_ave_pct%) too high";
 }
@@ -805,8 +767,8 @@ if ($pdOutSpeed) {
         }
         $output .= "ps;;;0;$max_speedOut ";
 } 
-if ($pdInUsage) { $output .= "inUsage=$in_ave_pct%;$warn_usage;$crit_usage;; "; }
-if ($pdOutUsage) { $output .= "outUsage=$out_ave_pct%;$warn_usage;$crit_usage;; "; }
+if ($pdInUsage) { $output .= "inUsage=$in_ave_pct%;$opt_warn_usage;$opt_crit_usage;; "; }
+if ($pdOutUsage) { $output .= "outUsage=$out_ave_pct%;$opt_warn_usage;$opt_crit_usage;; "; }
 if ($pdInBwdth) { $output .= "inBandwidth=" . $pin_ave . "B;;;; "; }
 if ($pdOutBwdth) { $output .= "outBandwidth=" . $pout_ave . "B;;;; "; }
 if ($pdInAbs) {  $output .= "inAbsolut=$in_bytes_abs" . "c;;;; "; }
@@ -816,8 +778,8 @@ stop($output, $state);
 
 
 # end of internal timeout eval group
-alarm 0;
-};
+#alarm 0;
+#};
 
 sub fetch_Ip2IfIndex {
 	my $state;
@@ -841,14 +803,14 @@ sub fetch_Ip2IfIndex {
 
         # Changed 20220919 rm
         # Formatting changes and adding ability to list all interfaces not just IP based ones
-	if ( $index_list ){
+	if ( $opt_index_list ){
 		print ("\n[Interfaces with IPs found:]\n");
 		print ("  IP Addr\t\t\tIndex\n");
 		print ("----------------------------------------\n");
 	}
 	# Check each returned value
         while ( $n < scalar( @{ $IPInterfaces[0] }) ) {
-		if ( $index_list ){
+		if ( $opt_index_list ){
 			printf ("%-25s", "$IPInterfaces[0][$n][1]");
                         print "\t  $IPInterfaces[0][$n][2]\n";
 		}
@@ -860,7 +822,7 @@ sub fetch_Ip2IfIndex {
                 $n++;
 	}
         $n = 0;
-        if ( $index_list ){
+        if ( $opt_index_list ){
                 print ("\n[All Interfaces:]\n");
                 print ("    Interface\t\t\tIndex\n");
                 print ("----------------------------------------\n");
@@ -949,20 +911,20 @@ sub unit2bytes {
 
 sub unit2scale {
 	# Scale output, expecting Bits\Bytes input
-	my ($val, $units) = @_;
+	my ($val, $opt_units) = @_;
 	my $prefix = "";
 
 
         # changed 20220919
-        if ( $units eq "k" ) {
+        if ( $opt_units eq "k" ) {
 		$val = sprintf( "%.2f", $val / 1000 );
 		$prefix = "K";
 	}
-        if ( $units eq "m" ) {
+        if ( $opt_units eq "m" ) {
 		$val = sprintf( "%.2f", $val / 1000 / 1000 );
 		$prefix = "M";
 	}
-        if ( $units eq "g" ) {
+        if ( $opt_units eq "g" ) {
 		$val = sprintf( "%.2f", $val / 1000 / 1000 / 1000 );
 		$prefix = "G";
 	}
@@ -1032,26 +994,24 @@ sub debugout {
 
 	my ( $text, $level ) = @_;
 
-	if ( $level <= $debug) {
+	if ( $level <= $opt_debug) {
 		print "$text\n";
 	}
 }
 
-#cosmetic changes 20050614 by mw
-#Couldn't sustain "HERE";-), either.
 sub print_usage {
 	print <<EOU;
-    Usage: check_iftraffic64.pl -H host [ -C community_string ] [ -i if_index|if_descr ] [ -r ] [ -b if_max_speed_in | -I if_max_speed_in ] [ -O if_max_speed_out ] [ -u ] [ -B ] [ --32bit ] [ -f ] [ -L ] [ -M ] [ -w warn ] [ -c crit ] [ -v 1|2|3 ] [ --username <username> ] [ --contextname <contextname> ] [ --authpassword <authpassword> ] [ --authprotocol MD5|SHA ] [ --privpassword <privpassword> ] [ --privprotocol DES|3DES|AES|AES192|AES256|AES256C ] [ --authkey <authkey> ] [ --privkey <privkey> ] [ -q abcdefgh ] [ -t ]
+    Usage: check_snmp_iftraffic -H host [ -C community_string ] [ -i if_index|if_descr ] [ -b if_max_speed_in | -I if_max_speed_in ] [ -O if_max_speed_out ] [ -u ] [ -B ] [ --32bit ] [ -f ] [ -L ] [ -M ] [ -w warn ] [ -c crit ] [ -v 1|2|3 ] [ --username <username> ] [ --contextname <contextname> ] [ --authpassword <authpassword> ] [ --authprotocol MD5|SHA ] [ --privpassword <privpassword> ] [ --privprotocol DES|3DES|AES|AES192|AES256|AES256C ] [ --authkey <authkey> ] [ --privkey <privkey> ] [ -q abcdefgh ] [ -t ] [ -T <seconds> ] [ -r <integer> ]
 
-    Example 1: check_iftraffic64.pl -H host1 -C sneaky
-    Example 2: check_iftraffic64.pl -H host1 -C sneaky -i "Intel Pro" -r -B  
-    Example 3: check_iftraffic64.pl -H host1 -C sneaky -i 5
-    Example 4: check_iftraffic64.pl -H host1 -C sneaky -i 5 -B -b 100 -u m --32bit
-    Example 5: check_iftraffic64.pl -H host1 -C sneaky -i 5 -B -I 20 -O 5 -u m 
-    Example 6: check_iftraffic64.pl -H host1 -C sneaky -A 192.168.1.1 -B -b 100 -u m 
-    Example 7: check_iftraffic64.pl -H host1 -C sneaky -A 192.168.1.1 --force --32bit 
-    Example 8: check_iftraffic64.pl -H host1 --username admin --authpassword sneaky  
-    Example 9: check_iftraffic64.pl -H host1 --username admin --authpassword sneaky123 --privpassword reallysneaky --privprotocol 3DES  
+    Example 1: check_snmp_iftraffic -H host1 -C sneaky
+    Example 2: check_snmp_iftraffic -H host1 -C sneaky -i "Intel Pro" -r -B  
+    Example 3: check_snmp_iftraffic -H host1 -C sneaky -i 5
+    Example 4: check_snmp_iftraffic -H host1 -C sneaky -i 5 -B -b 100 -u m --32bit
+    Example 5: check_snmp_iftraffic -H host1 -C sneaky -i 5 -B -I 20 -O 5 -u m 
+    Example 6: check_snmp_iftraffic -H host1 -C sneaky -A 192.168.1.1 -B -b 100 -u m 
+    Example 7: check_snmp_iftraffic -H host1 -C sneaky -A 192.168.1.1 --force --32bit 
+    Example 8: check_snmp_iftraffic -H host1 --username admin --authpassword sneaky  
+    Example 9: check_snmp_iftraffic -H host1 --username admin --authpassword sneaky123 --privpassword reallysneaky --privprotocol 3DES  
 
     Options:
 
@@ -1067,8 +1027,6 @@ sub print_usage {
         Interface Name
     -M, --max INTEGER
 	Max Counter Value (in bits) of net devices in giga/mega/kilo/bits. Requires -u.
-    -r, --regexp
-        Use regexp to match NAME in description OID
     -u, --units STRING
         g=gigabits/s,m=megabits/s,k=kilobits/s,b=bits/s. Required if -b, -I, -M,
 	or -O are used.
@@ -1102,8 +1060,12 @@ sub print_usage {
         SNMPv3 authentication password
     -a, --authproto=STRING
         SNMPv3 authentication protocol
+    -r, --retries
+        Sets how many times to retry SNMP (default: 5)
     -t, --disabletotals
         Disables RX and TX Total output
+    -T, --timeout=INTEGER
+        Sets timeout value for SNMP (default: 30s)
     -q, --disableperf=STRING
         Disable specific perfdata 
         (a - InSpeed, b - OutSpeed, c - InUsage, d - OutUsage, e - InBwdth, f - OutBwdth, g - InAbsolute, f - OutAbsolute)
