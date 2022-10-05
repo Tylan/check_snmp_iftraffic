@@ -6,7 +6,7 @@
 #                      for                              #
 #                Icinga / Nagios                        #
 #                                                       #
-#        Version 1.0.1 (September 23, 2022)             #
+#        Version 1.0.2 (October 05, 2022)               #
 #                by Bob McLoughlin                      #
 #         E-mail: rmcloughlin@outlook.com               #
 #                                                       #
@@ -57,11 +57,27 @@ use vars qw (
 
 # config
 $PROGNAME    = $0;
-$VERSION     = '1.0.1';
+$VERSION     = '1.0.2';
 
 # Set script parameters
-my ( $in_bytes, $out_bytes, $in_bytes32, $out_bytes32, $in_ave, $pin_ave, $in_tot, $out_ave, $pout_ave, $out_tot ) = 0;
-my ( $pdInSpeed, $pdOutSpeed, $pdInUsage, $pdOutUsage, $pdInBwdth, $pdOutBwdth, $pdInAbs, $pdOutAbs ) = 1;
+my $in_bytes = 0;
+my $out_bytes = 0;
+my $in_bytes32 = 0;
+my $out_bytes32 = 0;
+my $in_ave = 0;
+my $pin_ave = 0;
+my $in_tot = 0;
+my $out_ave = 0;
+my $pout_ave = 0;
+my $out_tot = 0;
+my $pdInSpeed = 1;
+my $pdOutSpeed = 1;
+my $pdInUsage = 1;
+my $pdOutUsage = 1;
+my $pdInBwdth = 1;
+my $pdOutBwdth = 1;
+my $pdInAbs = 1;
+my $pdOutAbs = 1;
 my ( $error, $iface_number, $ifspeed64, $ifspeed32, $inbytes64, $inbytes32, $outbytes64, $outbytes32,
      $max_bytes, $response, $session, $max_speed, $max_speedOut, $timeout);
 my @snmpoids;
@@ -186,24 +202,27 @@ debugout ("INTERFACE DESCR: $opt_iface_descr", "2"), if ( defined($opt_iface_des
 if ( !$opt_host_address )  {
 	print  "\nMissing host address!\n\n";
 	stop(print_usage(),"OK");
-} elsif ( ( $opt_iface_speed ) and ( !$opt_units ) ){
-	print "\nMissing units!\n\n";
-        stop(print_usage(),"OK");
-} elsif ( ( $opt_units ) and ( ( !$opt_iface_speed ) and  ( !$opt_iface_speedOut ) ) ) {
-	print "\nMissing (-I or -O) interface maximum speed!\n\n";
-	stop(print_usage(),"OK");
-} elsif ( ( $opt_iface_speedOut ) and ( !$opt_units ) ) {
-	print "\nMissing units (-u) for Out maximum speed!\n\n";
-	stop(print_usage(),"OK");
-} elsif ( ( $opt_max_value ) and ( !$opt_units ) ) {
-	print "\nMissing units (-u) for maximum counter!\n\n";
-	stop(print_usage(),"OK");
-} elsif ( ( $opt_snmpver == 3 ) and ( $opt_authpass ) and ( !$opt_username ) ) {
-	print "\nMissing version 3 username!\n\n";
-	stop(print_usage(),"OK");
-} elsif ( ( $opt_snmpver == 3 ) and ( $opt_privpass ) and ( !$opt_authpass ) ) {
-	print "\nMissing version 3 auth password!\n\n";
-	stop(print_usage(),"OK");
+}
+if ( !$opt_index_list ) {
+        if ( ( $opt_iface_speed ) and ( !$opt_units ) ) {
+                print "\nMissing units!\n\n";
+                stop(print_usage(),"OK");
+        } elsif ( ( $opt_units ) and ( ( !$opt_iface_speed ) and  ( !$opt_iface_speedOut ) ) ) {
+                print "\nMissing (-I or -O) interface maximum speed!\n\n";
+                stop(print_usage(),"OK");
+        } elsif ( ( $opt_iface_speedOut ) and ( !$opt_units ) ) {
+                print "\nMissing units (-u) for Out maximum speed!\n\n";
+                stop(print_usage(),"OK");
+        } elsif ( ( $opt_max_value ) and ( !$opt_units ) ) {
+                print "\nMissing units (-u) for maximum counter!\n\n";
+                stop(print_usage(),"OK");
+        } elsif ( ( $opt_snmpver == 3 ) and ( $opt_authpass ) and ( !$opt_username ) ) {
+                print "\nMissing version 3 username!\n\n";
+                stop(print_usage(),"OK");
+        } elsif ( ( $opt_snmpver == 3 ) and ( $opt_privpass ) and ( !$opt_authpass ) ) {
+                print "\nMissing version 3 auth password!\n\n";
+                stop(print_usage(),"OK");
+        }
 }
 
 sub print_version {
